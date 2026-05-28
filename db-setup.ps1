@@ -1,5 +1,40 @@
 $ErrorActionPreference = 'SilentlyContinue'
 
+# ─── Enable SQL Server mixed-mode auth + sa account ──────────────────────────
+Write-Host "[0/9] Configuring SQL Server auth (mixed mode + sa)..." -ForegroundColor Cyan
+
+$regPaths = @(
+    'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQLServer',
+    'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\MSSQL15.MSSQLSERVER\MSSQLServer',
+    'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\MSSQL14.MSSQLSERVER\MSSQLServer'
+)
+$regSet = $false
+foreach ($rp in $regPaths) {
+    if (Test-Path $rp) {
+        Set-ItemProperty -Path $rp -Name LoginMode -Value 2 -Force
+        Write-Host "  LoginMode=2 (mixed) set at $rp" -ForegroundColor Green
+        $regSet = $true; break
+    }
+}
+if (-not $regSet) {
+    # Fallback: find any MSSQL instance key
+    $base = 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server'
+    Get-ChildItem $base -EA 0 | Where-Object { $_.Name -match 'MSSQL\d+\.' } | ForEach-Object {
+        $rp = "$($_.PSPath)\MSSQLServer"
+        if (Test-Path $rp) {
+            Set-ItemProperty -Path $rp -Name LoginMode -Value 2 -Force
+            Write-Host "  LoginMode=2 set at $rp" -ForegroundColor Green
+            $regSet = $true
+        }
+    }
+}
+
+# Restart into single-user mode to enable sa
+Stop-Service MSSQLSERVER -Force -EA 0
+Start-Sleep 3
+$p = Start-Process -FilePath "net" -ArgumentList "start MSSQLSERVER /m" -PassThru -NoNewWindow -EA 0
+Start-Sleep 8
+
 $sqlcmd = if (Get-Command sqlcmd -EA 0) { "sqlcmd" } else {
     @(
         "${env:ProgramFiles}\Microsoft SQL Server\Client SDK\ODBC\170\Tools\Binn\sqlcmd.exe",
@@ -8,6 +43,19 @@ $sqlcmd = if (Get-Command sqlcmd -EA 0) { "sqlcmd" } else {
     ) | Where-Object { Test-Path $_ } | Select-Object -First 1
 }
 if (-not $sqlcmd) { Write-Host "[!] sqlcmd not found" -ForegroundColor Red; exit 1 }
+
+# Enable sa in single-user mode via Windows auth
+$tmp = [IO.Path]::GetTempFileName() + ".sql"
+"ALTER LOGIN [sa] WITH PASSWORD='sa', CHECK_POLICY=OFF, CHECK_EXPIRATION=OFF; ALTER LOGIN [sa] ENABLE; PRINT 'sa enabled'" | Set-Content $tmp -Encoding UTF8
+& $sqlcmd -S localhost -E -i $tmp -b 2>&1 | Where-Object { $_ -match '\S' } | ForEach-Object { Write-Host "  $_" -ForegroundColor Green }
+Remove-Item $tmp -EA 0
+
+# Restart normally
+Stop-Service MSSQLSERVER -Force -EA 0
+Start-Sleep 3
+Start-Service MSSQLSERVER -EA 0
+Start-Sleep 5
+Write-Host "  SQL Server restarted (normal mode)" -ForegroundColor Green
 
 function Invoke-Sql($q) {
     $tmp = [IO.Path]::GetTempFileName() + ".sql"
