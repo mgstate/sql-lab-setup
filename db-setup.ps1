@@ -60,14 +60,14 @@ Write-Host "  SQL Server restarted (normal mode)" -ForegroundColor Green
 function Invoke-Sql($q) {
     $tmp = [IO.Path]::GetTempFileName() + ".sql"
     $q | Set-Content $tmp -Encoding UTF8
-    & $sqlcmd -S localhost -E -i $tmp -b 2>&1 | Where-Object { $_ -match '\S' } | ForEach-Object { Write-Host "  $_" }
+    & $sqlcmd -S localhost -U sa -P sa -i $tmp -b 2>&1 | Where-Object { $_ -match '\S' } | ForEach-Object { Write-Host "  $_" }
     Remove-Item $tmp -EA 0
 }
 
 function Get-RowCount($tbl) {
     $tmp = [IO.Path]::GetTempFileName() + ".sql"
     "USE HR_Sensitive; SELECT COUNT_BIG(*) FROM dbo.$tbl;" | Set-Content $tmp -Encoding UTF8
-    $out = & $sqlcmd -S localhost -E -i $tmp -h -1 -b 2>&1 | Where-Object { $_ -match '^\s*\d' } | Select-Object -First 1
+    $out = & $sqlcmd -S localhost -U sa -P sa -i $tmp -h -1 -b 2>&1 | Where-Object { $_ -match '^\s*\d' } | Select-Object -First 1
     Remove-Item $tmp -EA 0
     return $out.Trim()
 }
@@ -76,7 +76,7 @@ function Get-DbSizeMB {
     $tmp = [IO.Path]::GetTempFileName() + ".sql"
     "USE HR_Sensitive; SELECT CAST(SUM(size * 8.0 / 1024) AS INT) FROM sys.database_files WHERE type_desc = 'ROWS';" |
         Set-Content $tmp -Encoding UTF8
-    $out = & $sqlcmd -S localhost -E -i $tmp -h -1 -b 2>&1 | Where-Object { $_ -match '^\s*\d' } | Select-Object -First 1
+    $out = & $sqlcmd -S localhost -U sa -P sa -i $tmp -h -1 -b 2>&1 | Where-Object { $_ -match '^\s*\d' } | Select-Object -First 1
     Remove-Item $tmp -EA 0
     return $out.Trim()
 }
