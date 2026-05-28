@@ -220,76 +220,68 @@ CREATE TABLE dbo.VPNSessions (
 "@
 
 Write-Host "[2/9] Employees..." -ForegroundColor Cyan
-
-$fn = @("James","Robert","Michael","William","David","Richard","Joseph","Thomas","Charles","Christopher",
-    "Daniel","Matthew","Anthony","Mark","Donald","Steven","Paul","Andrew","Kenneth","Joshua","Kevin","Brian",
-    "George","Timothy","Ronald","Edward","Jason","Jeffrey","Ryan","Jacob","Gary","Nicholas","Eric","Jonathan",
-    "Mary","Patricia","Jennifer","Linda","Barbara","Susan","Jessica","Sarah","Karen","Lisa","Nancy","Betty",
-    "Margaret","Sandra","Ashley","Emily","Dorothy","Donna","Carol","Ruth","Sharon","Michelle","Laura","Amanda",
-    "Melissa","Rebecca","Deborah","Rachel","Stephanie","Carolyn","Christine","Marie","Janet","Catherine",
-    "Ann","Joyce","Diana","Alice","Julie","Heather","Teresa","Gloria","Evelyn","Jean","Cheryl","Katherine",
-    "Joan","Nicole","Christina","Angela","Kimberly","Brenda","Amy","Anna","Virginia","Kathleen","Pamela")
-
-$ln = @("Smith","Johnson","Williams","Brown","Jones","Garcia","Miller","Davis","Rodriguez","Martinez",
-    "Hernandez","Lopez","Gonzalez","Wilson","Anderson","Thomas","Taylor","Moore","Jackson","Martin","Lee",
-    "Perez","Thompson","White","Harris","Sanchez","Clark","Ramirez","Lewis","Robinson","Walker","Young",
-    "Allen","King","Wright","Scott","Torres","Nguyen","Hill","Flores","Green","Adams","Nelson","Baker",
-    "Hall","Rivera","Campbell","Mitchell","Carter","Roberts","Turner","Phillips","Evans","Collins","Stewart",
-    "Morris","Morales","Murphy","Cook","Rogers","Gutierrez","Ortiz","Morgan","Cooper","Peterson","Bailey",
-    "Reed","Kelly","Howard","Ramos","Kim","Cox","Ward","Richardson","Watson","Brooks","Chavez","Wood",
-    "James","Bennett","Gray","Mendoza","Ruiz","Hughes","Price","Alvarez","Castillo","Sanders","Patel","Singh")
-
-$depts = @("HR","Finance","IT","Legal","Executive","Sales","Engineering","Operations","Marketing","Security")
-$titles = @{
-    HR          = @("HR Generalist","HR Manager","Recruiter","Compensation Analyst","Benefits Coordinator","HRIS Specialist","HR Director","Talent Acquisition Lead","People Operations Manager","HR Business Partner")
-    Finance     = @("Financial Analyst","Controller","Staff Accountant","Payroll Manager","Treasury Analyst","CFO","Accounts Payable Specialist","Budget Analyst","Senior Accountant","Finance Director")
-    IT          = @("Systems Administrator","Network Engineer","Security Analyst","Help Desk Technician","DevOps Engineer","IT Manager","Database Administrator","Cloud Architect","Infrastructure Lead","IT Director")
-    Legal       = @("Corporate Counsel","Paralegal","Compliance Officer","Contract Manager","Legal Assistant","General Counsel","Privacy Officer","Risk Analyst","Associate Counsel","Legal Operations Manager")
-    Executive   = @("CEO","COO","CTO","VP of Operations","Chief of Staff","VP of Finance","Director of Strategy","EVP","President","Managing Director")
-    Sales       = @("Account Executive","Sales Manager","Business Development Rep","Regional Director","Inside Sales Rep","VP of Sales","Sales Engineer","Channel Manager","Sales Operations Analyst","Enterprise Account Manager")
-    Engineering = @("Software Engineer","Senior Engineer","Principal Engineer","Engineering Manager","QA Engineer","Data Engineer","Platform Engineer","VP of Engineering","Staff Engineer","Tech Lead")
-    Operations  = @("Operations Manager","Process Analyst","Supply Chain Coordinator","Facilities Manager","Operations Director","Logistics Analyst","Business Analyst","Program Manager","Ops Specialist","PMO Lead")
-    Marketing   = @("Marketing Manager","Content Strategist","SEO Analyst","Brand Manager","Campaign Manager","Digital Marketing Specialist","VP of Marketing","Product Marketing Manager","Demand Gen Manager","CMO")
-    Security    = @("Security Engineer","Penetration Tester","SOC Analyst","CISO","Incident Responder","Threat Intelligence Analyst","Security Architect","GRC Analyst","Red Team Lead","Detection Engineer")
-}
-$streets = @("Main St","Oak Ave","Maple Dr","Cedar Ln","Elm St","Park Blvd","Washington Ave","Lake Dr","Ridge Rd","River Rd","Forest Way","Valley Rd","Hill St","Sunset Blvd","Lincoln Ave")
-$cities  = @("Austin TX","Seattle WA","Denver CO","Chicago IL","Atlanta GA","Phoenix AZ","Boston MA","Miami FL","Portland OR","Nashville TN","Dallas TX","San Diego CA","Minneapolis MN","Charlotte NC","Indianapolis IN")
-
-$seen = @{}; $rows = @()
-for ($i = 0; $i -lt 600; $i++) {
-    do { $f = $fn[(Get-Random -Max $fn.Count)]; $l = $ln[(Get-Random -Max $ln.Count)] } while ($seen["$f$l"])
-    $seen["$f$l"] = $true
-    $dept  = $depts[$i % $depts.Count]
-    $t     = ($titles[$dept])[(Get-Random -Max ($titles[$dept]).Count)]
-    if     ($t -match "CEO|CFO|CTO|COO|CISO|VP |Chief|EVP|President|Managing|General Counsel") { $sal = Get-Random -Min 195000 -Max 420000 }
-    elseif ($t -match "Director|Principal|Staff |Lead|Manager|Architect")                    { $sal = Get-Random -Min 115000 -Max 210000 }
-    else                                                                                      { $sal = Get-Random -Min 48000  -Max 118000 }
-    $email = "$($f.ToLower()).$($l.ToLower())@contoso.com"
-    $ssn   = "$(Get-Random -Min 400 -Max 599)-$('{0:D2}' -f (Get-Random -Min 10 -Max 99))-$('{0:D4}' -f (Get-Random -Min 1000 -Max 9999))"
-    $hire  = "$(Get-Random -Min 2009 -Max 2025)-$('{0:D2}' -f (Get-Random -Min 1 -Max 13))-$('{0:D2}' -f (Get-Random -Min 1 -Max 28))"
-    # Only insert core columns from PS — complex fields (address, bank, phone) filled by SQL after
-    $rows += "('$f $l','$ssn',$sal,'$dept','$email','$hire','$t')"
-}
-for ($b = 0; $b -lt $rows.Count; $b += 50) {
-    $batch = $rows[$b..([Math]::Min($b+49,$rows.Count-1))]
-    Invoke-Sql "USE HR_Sensitive; INSERT INTO dbo.Employees (FullName,SSN,Salary,Department,Email,HireDate,Title) VALUES $($batch -join ',');"
-}
-# Fill remaining columns with SQL-generated values (avoids PS string escaping issues entirely)
+# Generated entirely in T-SQL — no PS string interpolation, no PS 5.1 compatibility issues
 Invoke-Sql @"
-USE HR_Sensitive;
-UPDATE dbo.Employees SET
-    HomeAddress   = CAST(ABS(CHECKSUM(NEWID()))%9000+100 AS NVARCHAR) + ' ' +
-                    CASE ABS(CHECKSUM(NEWID()))%8 WHEN 0 THEN 'Main St' WHEN 1 THEN 'Oak Ave' WHEN 2 THEN 'Maple Dr'
-                        WHEN 3 THEN 'Cedar Ln' WHEN 4 THEN 'Elm St' WHEN 5 THEN 'Park Blvd'
-                        WHEN 6 THEN 'Washington Ave' ELSE 'Lake Dr' END + ' ' +
-                    CASE ABS(CHECKSUM(NEWID()))%6 WHEN 0 THEN 'Austin TX' WHEN 1 THEN 'Seattle WA'
-                        WHEN 2 THEN 'Denver CO' WHEN 3 THEN 'Chicago IL' WHEN 4 THEN 'Atlanta GA' ELSE 'Phoenix AZ' END,
-    DOB           = DATEADD(DAY, -(ABS(CHECKSUM(NEWID()))%10950 + 9125), GETDATE()),
-    BankAccount   = CAST(ABS(CHECKSUM(NEWID()))%900000000 + 100000000 AS NVARCHAR),
-    RoutingNo     = '0' + CAST(ABS(CHECKSUM(NEWID()))%89999999 + 21000000 AS NVARCHAR) + '0',
-    Phone         = CAST(ABS(CHECKSUM(NEWID()))%800+200 AS NVARCHAR)+'-'+CAST(ABS(CHECKSUM(NEWID()))%900+100 AS NVARCHAR)+'-'+CAST(ABS(CHECKSUM(NEWID()))%9000+1000 AS NVARCHAR),
-    EmergencyName = 'Contact ' + CAST(ID AS NVARCHAR),
-    EmergencyPhone= CAST(ABS(CHECKSUM(NEWID()))%800+200 AS NVARCHAR)+'-'+CAST(ABS(CHECKSUM(NEWID()))%900+100 AS NVARCHAR)+'-'+CAST(ABS(CHECKSUM(NEWID()))%9000+1000 AS NVARCHAR);
+USE HR_Sensitive; SET NOCOUNT ON;
+
+DECLARE @fn TABLE (n NVARCHAR(30));
+INSERT @fn VALUES
+  (N'James'),(N'Robert'),(N'Michael'),(N'William'),(N'David'),(N'Richard'),(N'Joseph'),(N'Thomas'),
+  (N'Charles'),(N'Christopher'),(N'Daniel'),(N'Matthew'),(N'Anthony'),(N'Mark'),(N'Donald'),
+  (N'Steven'),(N'Paul'),(N'Andrew'),(N'Kenneth'),(N'Joshua'),(N'Kevin'),(N'Brian'),(N'George'),
+  (N'Mary'),(N'Patricia'),(N'Jennifer'),(N'Linda'),(N'Barbara'),(N'Susan'),(N'Jessica'),
+  (N'Sarah'),(N'Karen'),(N'Lisa'),(N'Nancy'),(N'Betty'),(N'Margaret'),(N'Sandra'),(N'Ashley'),
+  (N'Emily'),(N'Dorothy'),(N'Carol'),(N'Ruth'),(N'Sharon'),(N'Michelle'),(N'Laura'),(N'Amanda'),
+  (N'Melissa'),(N'Rebecca'),(N'Rachel'),(N'Stephanie');
+
+DECLARE @ln TABLE (n NVARCHAR(30));
+INSERT @ln VALUES
+  (N'Smith'),(N'Johnson'),(N'Williams'),(N'Brown'),(N'Jones'),(N'Garcia'),(N'Miller'),(N'Davis'),
+  (N'Rodriguez'),(N'Martinez'),(N'Hernandez'),(N'Lopez'),(N'Gonzalez'),(N'Wilson'),(N'Anderson'),
+  (N'Thomas'),(N'Taylor'),(N'Moore'),(N'Jackson'),(N'Martin'),(N'Lee'),(N'Perez'),(N'Thompson'),
+  (N'White'),(N'Harris'),(N'Sanchez'),(N'Clark'),(N'Ramirez'),(N'Lewis'),(N'Robinson'),
+  (N'Walker'),(N'Young'),(N'Allen'),(N'King'),(N'Wright'),(N'Scott'),(N'Torres'),(N'Nguyen'),
+  (N'Hill'),(N'Flores'),(N'Green'),(N'Adams'),(N'Nelson'),(N'Baker'),(N'Hall'),(N'Rivera'),
+  (N'Campbell'),(N'Mitchell'),(N'Carter'),(N'Roberts');
+
+DECLARE @dept TABLE (d NVARCHAR(50), t1 NVARCHAR(60), t2 NVARCHAR(60), t3 NVARCHAR(60), s1 INT, s2 INT);
+INSERT @dept VALUES
+  (N'HR',          N'HR Generalist',          N'HR Manager',            N'Compensation Analyst',    52000, 135000),
+  (N'Finance',     N'Financial Analyst',       N'Controller',            N'CFO',                     58000, 320000),
+  (N'IT',          N'Systems Administrator',   N'IT Manager',            N'IT Director',             62000, 195000),
+  (N'Legal',       N'Paralegal',               N'Corporate Counsel',     N'General Counsel',         55000, 280000),
+  (N'Executive',   N'Director of Strategy',    N'VP of Operations',      N'CEO',                    165000, 420000),
+  (N'Sales',       N'Account Executive',       N'Sales Manager',         N'VP of Sales',             55000, 220000),
+  (N'Engineering', N'Software Engineer',       N'Engineering Manager',   N'VP of Engineering',       75000, 260000),
+  (N'Operations',  N'Business Analyst',        N'Operations Manager',    N'Operations Director',     52000, 185000),
+  (N'Marketing',   N'Campaign Manager',        N'Marketing Manager',     N'CMO',                     58000, 240000),
+  (N'Security',    N'SOC Analyst',             N'Security Architect',    N'CISO',                    72000, 300000);
+
+INSERT INTO dbo.Employees (FullName,SSN,Salary,Department,Email,HireDate,Title,HomeAddress,DOB,BankAccount,RoutingNo,Phone,EmergencyName,EmergencyPhone)
+SELECT TOP 600
+    f.n + N' ' + l.n,
+    CAST(ABS(CHECKSUM(NEWID()))%200+400 AS NVARCHAR(3)) + N'-' +
+        RIGHT(N'00'+CAST(ABS(CHECKSUM(NEWID()))%90+10 AS NVARCHAR(2)),2) + N'-' +
+        RIGHT(N'0000'+CAST(ABS(CHECKSUM(NEWID()))%9000+1000 AS NVARCHAR(4)),4),
+    CASE ABS(CHECKSUM(NEWID()))%3
+        WHEN 0 THEN ABS(CHECKSUM(NEWID()))%(d.s2-d.s1)+d.s1
+        WHEN 1 THEN ABS(CHECKSUM(NEWID()))%(d.s2-d.s1)+d.s1+10000
+        ELSE        ABS(CHECKSUM(NEWID()))%(d.s2-d.s1-20000)+d.s1 END,
+    d.d,
+    LOWER(f.n) + N'.' + LOWER(l.n) + N'@contoso.com',
+    DATEADD(DAY,-(ABS(CHECKSUM(NEWID()))%5840+365),GETDATE()),
+    CASE ABS(CHECKSUM(NEWID()))%3 WHEN 0 THEN d.t1 WHEN 1 THEN d.t2 ELSE d.t3 END,
+    CAST(ABS(CHECKSUM(NEWID()))%9000+100 AS NVARCHAR(5)) + N' ' +
+        CASE ABS(CHECKSUM(NEWID()))%6 WHEN 0 THEN N'Main St' WHEN 1 THEN N'Oak Ave' WHEN 2 THEN N'Maple Dr' WHEN 3 THEN N'Cedar Ln' WHEN 4 THEN N'Park Blvd' ELSE N'Elm St' END +
+        N' ' + CASE ABS(CHECKSUM(NEWID()))%5 WHEN 0 THEN N'Austin TX' WHEN 1 THEN N'Seattle WA' WHEN 2 THEN N'Denver CO' WHEN 3 THEN N'Chicago IL' ELSE N'Atlanta GA' END,
+    DATEADD(DAY,-(ABS(CHECKSUM(NEWID()))%10950+9125),GETDATE()),
+    CAST(ABS(CHECKSUM(NEWID()))%900000000+100000000 AS NVARCHAR(30)),
+    N'0'+CAST(ABS(CHECKSUM(NEWID()))%89999999+21000000 AS NVARCHAR(10))+N'0',
+    CAST(ABS(CHECKSUM(NEWID()))%800+200 AS NVARCHAR(3))+N'-'+CAST(ABS(CHECKSUM(NEWID()))%900+100 AS NVARCHAR(3))+N'-'+CAST(ABS(CHECKSUM(NEWID()))%9000+1000 AS NVARCHAR(4)),
+    N'Contact ' + CAST(ROW_NUMBER() OVER (ORDER BY NEWID()) AS NVARCHAR(6)),
+    CAST(ABS(CHECKSUM(NEWID()))%800+200 AS NVARCHAR(3))+N'-'+CAST(ABS(CHECKSUM(NEWID()))%900+100 AS NVARCHAR(3))+N'-'+CAST(ABS(CHECKSUM(NEWID()))%9000+1000 AS NVARCHAR(4))
+FROM @fn f CROSS JOIN @ln l CROSS JOIN @dept d
+ORDER BY NEWID();
 "@
 
 Write-Host "[3/9] Credentials..." -ForegroundColor Cyan
