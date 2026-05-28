@@ -268,20 +268,31 @@ for ($i = 0; $i -lt 600; $i++) {
     }
     $email = "$($f.ToLower()).$($l.ToLower())@contoso.com"
     $ssn   = "$(Get-Random -Min 400 -Max 599)-$('{0:D2}' -f (Get-Random -Min 10 -Max 99))-$('{0:D4}' -f (Get-Random -Min 1000 -Max 9999))"
-    $dob   = "$(Get-Random -Min 1962 -Max 2000)-$('{0:D2}' -f (Get-Random -Min 1 -Max 13))-$('{0:D2}' -f (Get-Random -Min 1 -Max 29))"
-    $hire  = "$(Get-Random -Min 2009 -Max 2025)-$('{0:D2}' -f (Get-Random -Min 1 -Max 13))-$('{0:D2}' -f (Get-Random -Min 1 -Max 29))"
-    $addr  = "$(Get-Random -Min 100 -Max 9999) $($streets[(Get-Random -Max $streets.Count)]), $($cities[(Get-Random -Max $cities.Count)]) $('{0:D5}' -f (Get-Random -Min 10000 -Max 99999))"
-    $acct  = "$(Get-Random -Min 1000000000 -Max 9999999999)"
-    $route = "0$(Get-Random -Min 21000000 -Max 89999999)0"
-    $phone = "$(Get-Random -Min 200 -Max 999)-$(Get-Random -Min 200 -Max 999)-$('{0:D4}' -f (Get-Random -Min 1000 -Max 9999))"
-    $en    = "$($fn[(Get-Random -Max $fn.Count)]) $($ln[(Get-Random -Max $ln.Count)])"
-    $ep    = "$(Get-Random -Min 200 -Max 999)-$(Get-Random -Min 200 -Max 999)-$('{0:D4}' -f (Get-Random -Min 1000 -Max 9999))"
-    $rows += "('$f $l','$ssn',$sal,'$dept','$email','$hire','$t',NULL,1,'$addr','$dob','$acct','$route','$phone','$en','$ep')"
+    $hire  = "$(Get-Random -Min 2009 -Max 2025)-$('{0:D2}' -f (Get-Random -Min 1 -Max 13))-$('{0:D2}' -f (Get-Random -Min 1 -Max 28))"
+    # Only insert core columns from PS — complex fields (address, bank, phone) filled by SQL after
+    $rows += "('$f $l','$ssn',$sal,'$dept','$email','$hire','$t')"
 }
 for ($b = 0; $b -lt $rows.Count; $b += 50) {
     $batch = $rows[$b..([Math]::Min($b+49,$rows.Count-1))]
-    Invoke-Sql "USE HR_Sensitive; INSERT INTO dbo.Employees (FullName,SSN,Salary,Department,Email,HireDate,Title,ManagerID,IsActive,HomeAddress,DOB,BankAccount,RoutingNo,Phone,EmergencyName,EmergencyPhone) VALUES $($batch -join ',');"
+    Invoke-Sql "USE HR_Sensitive; INSERT INTO dbo.Employees (FullName,SSN,Salary,Department,Email,HireDate,Title) VALUES $($batch -join ',');"
 }
+# Fill remaining columns with SQL-generated values (avoids PS string escaping issues entirely)
+Invoke-Sql @"
+USE HR_Sensitive;
+UPDATE dbo.Employees SET
+    HomeAddress   = CAST(ABS(CHECKSUM(NEWID()))%9000+100 AS NVARCHAR) + ' ' +
+                    CASE ABS(CHECKSUM(NEWID()))%8 WHEN 0 THEN 'Main St' WHEN 1 THEN 'Oak Ave' WHEN 2 THEN 'Maple Dr'
+                        WHEN 3 THEN 'Cedar Ln' WHEN 4 THEN 'Elm St' WHEN 5 THEN 'Park Blvd'
+                        WHEN 6 THEN 'Washington Ave' ELSE 'Lake Dr' END + ' ' +
+                    CASE ABS(CHECKSUM(NEWID()))%6 WHEN 0 THEN 'Austin TX' WHEN 1 THEN 'Seattle WA'
+                        WHEN 2 THEN 'Denver CO' WHEN 3 THEN 'Chicago IL' WHEN 4 THEN 'Atlanta GA' ELSE 'Phoenix AZ' END,
+    DOB           = DATEADD(DAY, -(ABS(CHECKSUM(NEWID()))%10950 + 9125), GETDATE()),
+    BankAccount   = CAST(ABS(CHECKSUM(NEWID()))%900000000 + 100000000 AS NVARCHAR),
+    RoutingNo     = '0' + CAST(ABS(CHECKSUM(NEWID()))%89999999 + 21000000 AS NVARCHAR) + '0',
+    Phone         = CAST(ABS(CHECKSUM(NEWID()))%800+200 AS NVARCHAR)+'-'+CAST(ABS(CHECKSUM(NEWID()))%900+100 AS NVARCHAR)+'-'+CAST(ABS(CHECKSUM(NEWID()))%9000+1000 AS NVARCHAR),
+    EmergencyName = 'Contact ' + CAST(ID AS NVARCHAR),
+    EmergencyPhone= CAST(ABS(CHECKSUM(NEWID()))%800+200 AS NVARCHAR)+'-'+CAST(ABS(CHECKSUM(NEWID()))%900+100 AS NVARCHAR)+'-'+CAST(ABS(CHECKSUM(NEWID()))%9000+1000 AS NVARCHAR);
+"@
 
 Write-Host "[3/9] Credentials..." -ForegroundColor Cyan
 Invoke-Sql @"
