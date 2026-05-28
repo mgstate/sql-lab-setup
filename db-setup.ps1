@@ -261,11 +261,9 @@ for ($i = 0; $i -lt 600; $i++) {
     $seen["$f$l"] = $true
     $dept  = $depts[$i % $depts.Count]
     $t     = ($titles[$dept])[(Get-Random -Max ($titles[$dept]).Count)]
-    $sal   = switch -Regex ($t) {
-        "CEO|CFO|CTO|COO|CISO|VP |Chief|EVP|President|Managing|General Counsel" { Get-Random -Min 195000 -Max 420000 }
-        "Director|Principal|Staff |Lead|Manager|Architect" { Get-Random -Min 115000 -Max 210000 }
-        default { Get-Random -Min 48000 -Max 118000 }
-    }
+    if     ($t -match "CEO|CFO|CTO|COO|CISO|VP |Chief|EVP|President|Managing|General Counsel") { $sal = Get-Random -Min 195000 -Max 420000 }
+    elseif ($t -match "Director|Principal|Staff |Lead|Manager|Architect")                    { $sal = Get-Random -Min 115000 -Max 210000 }
+    else                                                                                      { $sal = Get-Random -Min 48000  -Max 118000 }
     $email = "$($f.ToLower()).$($l.ToLower())@contoso.com"
     $ssn   = "$(Get-Random -Min 400 -Max 599)-$('{0:D2}' -f (Get-Random -Min 10 -Max 99))-$('{0:D4}' -f (Get-Random -Min 1000 -Max 9999))"
     $hire  = "$(Get-Random -Min 2009 -Max 2025)-$('{0:D2}' -f (Get-Random -Min 1 -Max 13))-$('{0:D2}' -f (Get-Random -Min 1 -Max 28))"
