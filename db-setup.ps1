@@ -308,8 +308,6 @@ INSERT INTO dbo.Credentials (Service,Username,PasswordHash,LastRotated,ExpiryDat
 ('CyberArk','cyberark_admin',N'`$2b`$12`$Td3aHi0jDmOnE2pK7rS3GlXaPeVyOhvOTdDnHuGvRzMsShDjKaAm','2024-02-10','2024-08-10','PAM vault - 300+ accounts.'),
 ('ServiceNow','svc_snow',N'`$2b`$12`$Sc2aIj1kEnPpF3qL8sT4HmYbQfWzPiwPUeEoIvHwSaRtTiEkLbBn','2023-09-05','2024-03-05','CMDB sync + incident automation.'),
 ('GitHub Enterprise','svc_github',N'`$2b`$12`$Rb1aJk2lFoQqG4rM9tU5InZcRgXaQjxQVfFpJwIxTbSuUjFlMcCo','2024-01-25','2024-07-25','Repo admin on all org repos.'),
-('Qualys','qualys_svc',N'`$2b`$12`$Qa0aKl3mGpRrH5sN0uV6JoAdShYbRkyRWgGqKxJyUcTvVkGmNdDp','2024-05-15','2024-11-15','Domain read + local admin via GPO.'),
-('HashiCorp Vault','vault_root',N'`$2b`$12`$Pz9aLm4nHqSsI6tO1vW7KpBeThZcSlzSXhHrLyKzVdUwWlHnOeEq','2024-03-01','2024-09-01','Root token. Air-gapped. DR drill 2024-03-01.'),
 ('Okta','okta_superadmin',N'`$2b`$12`$Oy8aJk5oIrTtJ7uP2wX8LqCfUiAdTmazTiIsMyLaWeVxXmIoFfFr','2024-04-05','2024-10-05','MFA policies for entire org.'),
 ('Ansible Tower','svc_ansible',N'`$2b`$12`$Nx7aKl6pJsUuK8vQ3xY9MrDgVjBeUnaUUjJtNzMbXfWyYnJpGgGs','2023-12-20','2024-06-20','SSH key access to all Linux servers.');
 "@
@@ -349,217 +347,138 @@ BEGIN
 END
 "@
 
-Write-Host "[5/9] EmailArchive (~500k rows, ~4 GB)..." -ForegroundColor Cyan
-Invoke-Sql @"
-USE HR_Sensitive;
-SET NOCOUNT ON;
-
-DECLARE @subjects TABLE (s NVARCHAR(300));
-INSERT @subjects VALUES
-  ('Re: Q3 budget review - action items required'),
-  ('Fwd: Acquisition target NDA - CONFIDENTIAL - do not forward'),
-  ('Re: Board presentation deck - final review'),
-  ('Salary band adjustments FY2024 - HR restricted'),
-  ('Re: Security audit findings - remediation tracking'),
-  ('M&A due diligence materials - Project Falcon - attorney client privileged'),
-  ('Re: Workforce restructuring planning - senior leadership only'),
-  ('Fwd: Vendor master contract renewal - pricing terms'),
-  ('Re: Executive compensation benchmarking report'),
-  ('System privileged access request - CISO approval required'),
-  ('Re: Annual performance calibration session notes'),
-  ('Legal hold notice - preserve all communications - immediate action required'),
-  ('Re: Potential data incident response - draft notification'),
-  ('Q4 headcount and compensation plan - DRAFT - do not distribute'),
-  ('Re: Infrastructure refresh budget - capital expenditure approval');
-
-DECLARE @bodies TABLE (b NVARCHAR(MAX));
-INSERT @bodies VALUES
-(N'Hi team, following up on our discussion from yesterday. Please review the attached documents and provide feedback by EOD Friday. Key action items: (1) Review compensation band analysis against market data, (2) Confirm Q4 headcount approvals from business unit leaders, (3) Sign off on merit increase recommendations before submission to Finance. Note this information is strictly confidential and must not be shared outside this distribution. HR will schedule individual follow-ups next week. Please acknowledge receipt.'),
-(N'Per our conversation earlier this week, the audit identified several material control gaps requiring immediate remediation. Priority 1 findings must be addressed within 30 days of report issuance. The full findings report with severity ratings and remediation guidance is attached. Please coordinate with your team leads and submit status updates by the 15th. Any blockers should be escalated to the CISO immediately. This is a formal finding tracked in the GRC platform until closure. Your cooperation is essential for our compliance posture.'),
-(N'Attached is the revised proposal incorporating all feedback from last week. Legal has reviewed and approved sections 3 and 7. Finance needs to sign off on the budget line items before we can proceed to contract execution. Note the updated data handling terms in section 4.2 - these are non-negotiable per our DPA requirements. The vendor has agreed to our SLA requirements but requires a 90-day implementation window. Decision needed by end of month to hold current pricing. Awaiting your written approval to proceed.'),
-(N'Reminder that all privileged access credentials for the legacy system must be rotated before the migration cutover date. The service account details are documented in the IT vault under project MIGRATE-2024. Please do not transmit these credentials via email or instant messaging. All migration access will be logged and reviewed post-cutover. If you require elevated access for testing purposes submit a PAM ticket with your manager approval attached. Audit trail will be reviewed by InfoSec team within 5 business days of project completion.'),
-(N'Following the earnings call, leadership has requested a full review of vendor contracts over 500k annual value. Please pull the current contract register from the procurement system and flag renewals in the next 6 months. Pay particular attention to contracts with CPI adjustment clauses and most-favored-nation pricing terms. Finance needs final numbers by the 20th for the board deck. The CFO has flagged three specific vendors for renegotiation - I will send a separate briefing. This is time-sensitive please respond with availability for a call this week.');
-
-DECLARE @padding NVARCHAR(MAX) = REPLICATE(CAST(
-  N' [Thread history preserved] Previous messages and attachments retained for compliance and audit purposes per records retention policy RM-2019-003. This communication may be subject to legal hold. Do not delete.'
-AS NVARCHAR(MAX)), 28);
-
-DECLARE @batch INT = 0;
-DECLARE @batchSize INT = 10000;
-DECLARE @total INT = 500000;
-
-WHILE @batch < @total
-BEGIN
-    INSERT INTO dbo.EmailArchive (Sender,Recipients,CC,Subject,Body,SentAt,HasAttachment,AttachmentName,FolderPath,IsRead,Importance,ConversationID)
-    SELECT TOP (@batchSize)
-        LEFT(e.Email, 120),
-        'dept-' + CAST(ABS(CHECKSUM(NEWID())) % 10 AS NVARCHAR) + '@contoso.com; ' + LEFT(e2.Email,80),
-        CASE WHEN ABS(CHECKSUM(NEWID())) % 3 = 0 THEN 'leadership@contoso.com' ELSE '' END,
-        (SELECT TOP 1 s FROM @subjects ORDER BY NEWID()),
-        CAST((SELECT TOP 1 b FROM @bodies ORDER BY NEWID()) AS NVARCHAR(MAX)) + @padding,
-        DATEADD(MINUTE, -(ABS(CHECKSUM(NEWID())) % 1576800), GETDATE()),
-        CASE WHEN ABS(CHECKSUM(NEWID())) % 4 = 0 THEN 1 ELSE 0 END,
-        CASE WHEN ABS(CHECKSUM(NEWID())) % 4 = 0 THEN
-            CASE ABS(CHECKSUM(NEWID())) % 4
-                WHEN 0 THEN 'Compensation_Report_FY2024.xlsx'
-                WHEN 1 THEN 'Contract_Draft_v3.docx'
-                WHEN 2 THEN 'Audit_Findings_CONFIDENTIAL.pdf'
-                ELSE 'Headcount_Plan_Q4.xlsx' END
-        ELSE '' END,
-        CASE ABS(CHECKSUM(NEWID())) % 5
-            WHEN 0 THEN 'Sent' WHEN 1 THEN 'Archive'
-            WHEN 2 THEN 'HR-Restricted' WHEN 3 THEN 'Legal-Hold' ELSE 'Inbox' END,
-        CASE WHEN ABS(CHECKSUM(NEWID())) % 5 = 0 THEN 0 ELSE 1 END,
-        CASE ABS(CHECKSUM(NEWID())) % 6 WHEN 0 THEN 'High' WHEN 1 THEN 'Low' ELSE 'Normal' END,
-        LOWER(CONVERT(NVARCHAR(36), NEWID()))
-    FROM dbo.Employees e
-    CROSS JOIN dbo.Employees e2
-    WHERE e.ID <> e2.ID;
-
-    SET @batch = @batch + @batchSize;
-    DECLARE @epct INT = @batch * 100 / @total;
-    RAISERROR('  %d%% (%d / %d)', 0, 1, @epct, @batch, @total) WITH NOWAIT;
-    IF @batch >= @total BREAK;
-END
+Write-Host "[5/9] EmailArchive (150k rows, ~3 GB) ..." -ForegroundColor Cyan
+# 3 batches x 50k rows. Each batch is a fresh sqlcmd call — no WHILE loop, no DECLARE bugs.
+# Body = ~10k chars NVARCHAR = ~20KB/row → 150k x 20KB = ~3 GB
+$emailSql = @"
+USE HR_Sensitive; SET NOCOUNT ON;
+DECLARE @b NVARCHAR(MAX) = REPLICATE(CAST(N'Internal confidential communication. This message and any attachments are intended solely for authorized recipients and may contain privileged, proprietary, or sensitive business information including compensation data, personnel records, legal matters, and strategic planning documents. Unauthorized review, disclosure, copying, distribution, or use is strictly prohibited. If received in error please notify the sender immediately and destroy all copies. Records retention: 7 years per policy RM-2019-003. ' AS NVARCHAR(MAX)), 55);
+INSERT INTO dbo.EmailArchive (Sender,Recipients,CC,Subject,Body,SentAt,HasAttachment,AttachmentName,FolderPath,IsRead,Importance,ConversationID)
+SELECT TOP 50000
+    N'user'+CAST(ABS(CHECKSUM(NEWID()))%600+1 AS NVARCHAR(6))+N'@contoso.com',
+    N'dept'+CAST(ABS(CHECKSUM(NEWID()))%10 AS NVARCHAR(3))+N'@contoso.com',
+    CASE WHEN ABS(CHECKSUM(NEWID()))%4=0 THEN N'leadership@contoso.com' ELSE N'' END,
+    CASE ABS(CHECKSUM(NEWID()))%6
+        WHEN 0 THEN N'Re: Q3 budget review - action items required'
+        WHEN 1 THEN N'Fwd: Acquisition NDA - CONFIDENTIAL - restricted distribution'
+        WHEN 2 THEN N'Salary band adjustments FY2024 - HR restricted'
+        WHEN 3 THEN N'M&A due diligence - Project Falcon - attorney client privileged'
+        WHEN 4 THEN N'Re: Security audit findings - remediation tracking'
+        ELSE      N'Workforce restructuring planning - senior leadership only' END,
+    @b,
+    DATEADD(MINUTE,-(ABS(CHECKSUM(NEWID()))%1576800),GETDATE()),
+    CASE WHEN ABS(CHECKSUM(NEWID()))%4=0 THEN 1 ELSE 0 END,
+    CASE WHEN ABS(CHECKSUM(NEWID()))%4=0 THEN
+        CASE ABS(CHECKSUM(NEWID()))%3 WHEN 0 THEN N'Compensation_Report_FY2024.xlsx' WHEN 1 THEN N'Audit_Findings_CONFIDENTIAL.pdf' ELSE N'Headcount_Plan_Q4.xlsx' END
+    ELSE N'' END,
+    CASE ABS(CHECKSUM(NEWID()))%5 WHEN 0 THEN N'Sent' WHEN 1 THEN N'Archive' WHEN 2 THEN N'HR-Restricted' WHEN 3 THEN N'Legal-Hold' ELSE N'Inbox' END,
+    CASE WHEN ABS(CHECKSUM(NEWID()))%5=0 THEN 0 ELSE 1 END,
+    CASE ABS(CHECKSUM(NEWID()))%6 WHEN 0 THEN N'High' WHEN 1 THEN N'Low' ELSE N'Normal' END,
+    LOWER(CONVERT(NVARCHAR(36),NEWID()))
+FROM sys.all_objects a CROSS JOIN sys.all_objects b;
 "@
+for ($eb = 1; $eb -le 3; $eb++) {
+    Invoke-Sql $emailSql
+    Write-Host "  batch $eb/3" -ForegroundColor Gray
+}
 
-Write-Host "[6/9] DocumentRepository (~80k rows, ~2 GB)..." -ForegroundColor Cyan
+Write-Host "[6/9] DocumentRepository (60k rows, ~2 GB) ..." -ForegroundColor Cyan
 Invoke-Sql @"
-USE HR_Sensitive;
-SET NOCOUNT ON;
-
-DECLARE @fnames TABLE (f NVARCHAR(200));
-INSERT @fnames VALUES
-  ('Employee_Compensation_Analysis_FY2024.xlsx'),
-  ('Board_Presentation_Q3_2024_FINAL.pptx'),
-  ('Vendor_Master_Contract_Renewal_2024.docx'),
-  ('InfoSec_Audit_Findings_CONFIDENTIAL.pdf'),
-  ('MA_Due_Diligence_ProjectFalcon_v4.docx'),
-  ('Payroll_Summary_Report_2024.xlsx'),
-  ('HR_Headcount_Plan_Q4_2024.xlsx'),
-  ('IT_Infrastructure_Migration_Runbook.docx'),
-  ('Legal_Hold_Notice_2024_Q2.pdf'),
-  ('Privileged_Access_Review_Results_Q3.xlsx'),
-  ('Workforce_Restructuring_Planning_DRAFT.docx'),
-  ('Executive_Compensation_Benchmarking_2024.pdf'),
-  ('Data_Incident_Response_Playbook_v2.docx'),
-  ('PenetrationTest_Report_External_2024.pdf'),
-  ('Performance_Calibration_Session_Notes.xlsx'),
-  ('Network_Architecture_Diagram_v6.vsdx'),
-  ('Cloud_Migration_Business_Case.pptx'),
-  ('Vendor_Security_Assessment_Report.pdf'),
-  ('IT_Asset_Inventory_2024.xlsx'),
-  ('DRP_BCP_Annual_Test_Results.docx');
-
-DECLARE @content NVARCHAR(MAX) = REPLICATE(CAST(
-  N'CONFIDENTIAL — RESTRICTED DISTRIBUTION. This document contains sensitive business, financial, or personnel information. Unauthorized disclosure, reproduction, or distribution is strictly prohibited and may constitute a violation of company policy, applicable law, or both. Classification: RESTRICTED. Retention: 7 years per Records Management Policy RM-2019-003. Access is logged and audited. Recipient is responsible for safeguarding this document and all copies. If received in error, notify the records management team immediately and destroy all copies. Do not forward without explicit written authorization from the document owner. '
-AS NVARCHAR(MAX)), 80);
-
-INSERT INTO dbo.DocumentRepository
-    (FileName,FilePath,Owner,Department,Content,CreatedAt,ModifiedAt,SizeBytes,Sensitivity,Version,Tags,CheckedOutBy)
-SELECT TOP 80000
-    (SELECT TOP 1 f FROM @fnames ORDER BY NEWID()),
-    '\\fileserver01\' + d.dept + '\Documents\' + CAST(YEAR(DATEADD(DAY,-(ABS(CHECKSUM(NEWID()))%730),GETDATE())) AS NVARCHAR) + '\' + (SELECT TOP 1 f FROM @fnames ORDER BY NEWID()),
-    LEFT(e.Email,100),
-    d.dept,
-    @content,
+USE HR_Sensitive; SET NOCOUNT ON;
+DECLARE @c NVARCHAR(MAX) = REPLICATE(CAST(N'CONFIDENTIAL RESTRICTED DISTRIBUTION. This document contains sensitive business, financial, or personnel information. Unauthorized disclosure, reproduction, or distribution is strictly prohibited and may violate company policy and applicable law. Classification: RESTRICTED. Retention: 7 years per Records Management Policy RM-2019-003. Access is logged and audited. If received in error notify records management immediately and destroy all copies. ' AS NVARCHAR(MAX)), 85);
+INSERT INTO dbo.DocumentRepository (FileName,FilePath,Owner,Department,Content,CreatedAt,ModifiedAt,SizeBytes,Sensitivity,Version,Tags,CheckedOutBy)
+SELECT TOP 60000
+    CASE ABS(CHECKSUM(NEWID()))%8
+        WHEN 0 THEN N'Employee_Compensation_Analysis_FY2024.xlsx'
+        WHEN 1 THEN N'Board_Presentation_Q3_FINAL.pptx'
+        WHEN 2 THEN N'MA_Due_Diligence_ProjectFalcon_v4.docx'
+        WHEN 3 THEN N'InfoSec_Audit_Findings_CONFIDENTIAL.pdf'
+        WHEN 4 THEN N'HR_Headcount_Plan_Q4_2024.xlsx'
+        WHEN 5 THEN N'Legal_Hold_Notice_2024_Q2.pdf'
+        WHEN 6 THEN N'PenetrationTest_Report_External_2024.pdf'
+        ELSE        N'Executive_Compensation_Benchmarking_2024.pdf' END,
+    N'\\fileserver01\HR\Documents\2024\file_'+CAST(ABS(CHECKSUM(NEWID()))%99999 AS NVARCHAR(10))+N'.bin',
+    N'user'+CAST(ABS(CHECKSUM(NEWID()))%600+1 AS NVARCHAR(6))+N'@contoso.com',
+    CASE ABS(CHECKSUM(NEWID()))%6 WHEN 0 THEN N'HR' WHEN 1 THEN N'Finance' WHEN 2 THEN N'IT' WHEN 3 THEN N'Legal' WHEN 4 THEN N'Executive' ELSE N'Security' END,
+    @c,
     DATEADD(DAY,-(ABS(CHECKSUM(NEWID()))%730),GETDATE()),
     DATEADD(DAY,-(ABS(CHECKSUM(NEWID()))%60),GETDATE()),
     ABS(CHECKSUM(NEWID()))%51200000+10240,
-    CASE ABS(CHECKSUM(NEWID()))%4 WHEN 0 THEN 'Confidential' WHEN 1 THEN 'Restricted' WHEN 2 THEN 'Internal' ELSE 'Public' END,
-    CAST(ABS(CHECKSUM(NEWID()))%5+1 AS NVARCHAR)+'.'+CAST(ABS(CHECKSUM(NEWID()))%9 AS NVARCHAR),
-    CASE ABS(CHECKSUM(NEWID()))%4 WHEN 0 THEN 'finance,audit,restricted' WHEN 1 THEN 'hr,personnel,compensation' WHEN 2 THEN 'legal,compliance,hold' ELSE 'it,security,infrastructure' END,
-    CASE WHEN ABS(CHECKSUM(NEWID()))%8=0 THEN LEFT(e.Email,80) ELSE '' END
-FROM dbo.Employees e
-CROSS JOIN (SELECT 'HR' dept UNION SELECT 'Finance' UNION SELECT 'IT' UNION SELECT 'Legal'
-            UNION SELECT 'Executive' UNION SELECT 'Security') d
-CROSS JOIN master..spt_values v WHERE v.number < 100;
+    CASE ABS(CHECKSUM(NEWID()))%3 WHEN 0 THEN N'Confidential' WHEN 1 THEN N'Restricted' ELSE N'Internal' END,
+    CAST(ABS(CHECKSUM(NEWID()))%5+1 AS NVARCHAR(2))+N'.'+CAST(ABS(CHECKSUM(NEWID()))%9 AS NVARCHAR(2)),
+    CASE ABS(CHECKSUM(NEWID()))%3 WHEN 0 THEN N'finance,audit' WHEN 1 THEN N'hr,compensation' ELSE N'legal,compliance' END,
+    CASE WHEN ABS(CHECKSUM(NEWID()))%8=0 THEN N'user'+CAST(ABS(CHECKSUM(NEWID()))%600+1 AS NVARCHAR(6))+N'@contoso.com' ELSE N'' END
+FROM sys.all_objects a CROSS JOIN sys.all_objects b;
 "@
 
-Write-Host "[7/9] SecurityEvents (~1M rows)..." -ForegroundColor Cyan
-Invoke-Sql @"
-USE HR_Sensitive;
-SET NOCOUNT ON;
-DECLARE @batch INT=0, @batchSize INT=50000, @total INT=1000000;
-WHILE @batch < @total
-BEGIN
-    INSERT INTO dbo.SecurityEvents (EventID,EventType,Source,Username,SourceIP,TargetHost,Description,Outcome,LoggedAt,ProcessID,SessionID)
-    SELECT TOP (@batchSize)
-        CASE ABS(CHECKSUM(NEWID()))%8 WHEN 0 THEN 4624 WHEN 1 THEN 4625 WHEN 2 THEN 4648
-            WHEN 3 THEN 4768 WHEN 4 THEN 4776 WHEN 5 THEN 5140 WHEN 6 THEN 7045 ELSE 4720 END,
-        CASE ABS(CHECKSUM(NEWID()))%6 WHEN 0 THEN 'Logon' WHEN 1 THEN 'Logon Failure'
-            WHEN 2 THEN 'Explicit Logon' WHEN 3 THEN 'Kerberos Auth'
-            WHEN 4 THEN 'Network Share Access' ELSE 'Service Install' END,
-        CASE ABS(CHECKSUM(NEWID()))%5 WHEN 0 THEN 'DC-01' WHEN 1 THEN 'DC-02'
-            WHEN 2 THEN 'DB-Server-02' WHEN 3 THEN 'APP-Server-01' ELSE 'FileServer-01' END,
-        LEFT(e.FullName,15) + CAST(e.ID AS NVARCHAR),
-        CAST(CAST(ABS(CHECKSUM(NEWID()))%192+10 AS NVARCHAR)+'.'+CAST(ABS(CHECKSUM(NEWID()))%256 AS NVARCHAR)+'.'+CAST(ABS(CHECKSUM(NEWID()))%256 AS NVARCHAR)+'.'+CAST(ABS(CHECKSUM(NEWID()))%254+1 AS NVARCHAR) AS VARCHAR(45)),
-        CASE ABS(CHECKSUM(NEWID()))%6 WHEN 0 THEN 'DB-Server-02' WHEN 1 THEN 'DC-01'
-            WHEN 2 THEN 'FileServer-01' WHEN 3 THEN 'APP-Server-01'
-            WHEN 4 THEN 'MAIL-01' ELSE 'WORKSTATION-'+CAST(ABS(CHECKSUM(NEWID()))%200+1 AS NVARCHAR) END,
-        CASE ABS(CHECKSUM(NEWID()))%4
-            WHEN 0 THEN 'An account was successfully logged on'
-            WHEN 1 THEN 'An account failed to log on - invalid credentials supplied'
-            WHEN 2 THEN 'A logon was attempted using explicit credentials'
-            ELSE 'A network share object was accessed' END,
-        CASE WHEN ABS(CHECKSUM(NEWID()))%10=0 THEN 'Failure' ELSE 'Success' END,
-        DATEADD(SECOND,-(ABS(CHECKSUM(NEWID()))%7776000),GETDATE()),
-        ABS(CHECKSUM(NEWID()))%65535+1000,
-        LOWER(CONVERT(NVARCHAR(20),NEWID()))
-    FROM dbo.Employees e
-    CROSS JOIN master..spt_values v WHERE v.number < 2000;
-
-    SET @batch=@batch+@batchSize;
-    IF @batch%200000=0 RAISERROR('  %d / %d',0,1,@batch,@total) WITH NOWAIT;
-    IF @batch>=@total BREAK;
-END
+Write-Host "[7/9] SecurityEvents (1M rows) ..." -ForegroundColor Cyan
+$secSql = @"
+USE HR_Sensitive; SET NOCOUNT ON;
+INSERT INTO dbo.SecurityEvents (EventID,EventType,Source,Username,SourceIP,TargetHost,Description,Outcome,LoggedAt,ProcessID,SessionID)
+SELECT TOP 100000
+    CASE ABS(CHECKSUM(NEWID()))%7 WHEN 0 THEN 4624 WHEN 1 THEN 4625 WHEN 2 THEN 4648 WHEN 3 THEN 4768 WHEN 4 THEN 4776 WHEN 5 THEN 5140 ELSE 4720 END,
+    CASE ABS(CHECKSUM(NEWID()))%5 WHEN 0 THEN N'Logon' WHEN 1 THEN N'Logon Failure' WHEN 2 THEN N'Explicit Logon' WHEN 3 THEN N'Kerberos Auth' ELSE N'Network Share Access' END,
+    CASE ABS(CHECKSUM(NEWID()))%4 WHEN 0 THEN N'DC-01' WHEN 1 THEN N'DC-02' WHEN 2 THEN N'DB-Server-02' ELSE N'APP-Server-01' END,
+    N'user'+CAST(ABS(CHECKSUM(NEWID()))%600+1 AS NVARCHAR(6)),
+    CAST(CAST(ABS(CHECKSUM(NEWID()))%192+10 AS NVARCHAR(3))+N'.'+CAST(ABS(CHECKSUM(NEWID()))%256 AS NVARCHAR(3))+N'.'+CAST(ABS(CHECKSUM(NEWID()))%256 AS NVARCHAR(3))+N'.'+CAST(ABS(CHECKSUM(NEWID()))%254+1 AS NVARCHAR(3)) AS VARCHAR(45)),
+    CASE ABS(CHECKSUM(NEWID()))%5 WHEN 0 THEN N'DB-Server-02' WHEN 1 THEN N'DC-01' WHEN 2 THEN N'FileServer-01' WHEN 3 THEN N'APP-Server-01' ELSE N'WORKSTATION-'+CAST(ABS(CHECKSUM(NEWID()))%200+1 AS NVARCHAR(6)) END,
+    CASE ABS(CHECKSUM(NEWID()))%3 WHEN 0 THEN N'An account was successfully logged on' WHEN 1 THEN N'An account failed to log on - invalid credentials supplied' ELSE N'A network share object was accessed' END,
+    CASE WHEN ABS(CHECKSUM(NEWID()))%10=0 THEN N'Failure' ELSE N'Success' END,
+    DATEADD(SECOND,-(ABS(CHECKSUM(NEWID()))%7776000),GETDATE()),
+    ABS(CHECKSUM(NEWID()))%65535+1000,
+    LOWER(CONVERT(NVARCHAR(20),NEWID()))
+FROM sys.all_objects a CROSS JOIN sys.all_objects b;
 "@
+for ($sb = 1; $sb -le 10; $sb++) {
+    Invoke-Sql $secSql
+    Write-Host "  batch $sb/10" -ForegroundColor Gray
+}
 
-Write-Host "[8/9] PayrollTransactions + VPNSessions..." -ForegroundColor Cyan
+Write-Host "[8/9] PayrollTransactions (600k rows) + VPNSessions ..." -ForegroundColor Cyan
+$payrollSql = @"
+USE HR_Sensitive; SET NOCOUNT ON;
+INSERT INTO dbo.PayrollTransactions (EmployeeID,PayPeriodStart,PayPeriodEnd,GrossPay,FederalTax,StateTax,FICA,Medicare,NetPay,BankAccount,RoutingNo,ProcessedAt,Status,PayType)
+SELECT TOP 100000
+    ABS(CHECKSUM(NEWID()))%600+1,
+    CAST(DATEADD(DAY,-(ABS(CHECKSUM(NEWID()))%1095),GETDATE()) AS DATE),
+    CAST(DATEADD(DAY,13,DATEADD(DAY,-(ABS(CHECKSUM(NEWID()))%1095),GETDATE())) AS DATE),
+    CAST(ABS(CHECKSUM(NEWID()))%15000+1500 AS DECIMAL(10,2)),
+    CAST(ABS(CHECKSUM(NEWID()))%3000+200 AS DECIMAL(10,2)),
+    CAST(ABS(CHECKSUM(NEWID()))%1200+50 AS DECIMAL(10,2)),
+    CAST(ABS(CHECKSUM(NEWID()))%900+100 AS DECIMAL(10,2)),
+    CAST(ABS(CHECKSUM(NEWID()))%300+30 AS DECIMAL(10,2)),
+    CAST(ABS(CHECKSUM(NEWID()))%10000+1000 AS DECIMAL(10,2)),
+    CAST(ABS(CHECKSUM(NEWID()))%9000000000+1000000000 AS NVARCHAR(30)),
+    N'0'+CAST(ABS(CHECKSUM(NEWID()))%89999999+21000000 AS NVARCHAR(10))+N'0',
+    DATEADD(DAY,-(ABS(CHECKSUM(NEWID()))%1095),GETDATE()),
+    CASE ABS(CHECKSUM(NEWID()))%20 WHEN 0 THEN N'Failed' WHEN 1 THEN N'Reversed' ELSE N'Processed' END,
+    CASE ABS(CHECKSUM(NEWID()))%4 WHEN 0 THEN N'Overtime' WHEN 1 THEN N'Bonus' WHEN 2 THEN N'Commission' ELSE N'Regular' END
+FROM sys.all_objects a CROSS JOIN sys.all_objects b;
+"@
+for ($pb = 1; $pb -le 6; $pb++) {
+    Invoke-Sql $payrollSql
+    Write-Host "  batch $pb/6" -ForegroundColor Gray
+}
+
 Invoke-Sql @"
-USE HR_Sensitive;
-SET NOCOUNT ON;
-DECLARE @batch INT=0,@batchSize INT=50000,@total INT=600000;
-WHILE @batch < @total
-BEGIN
-    INSERT INTO dbo.PayrollTransactions (EmployeeID,PayPeriodStart,PayPeriodEnd,GrossPay,FederalTax,StateTax,FICA,Medicare,NetPay,BankAccount,RoutingNo,ProcessedAt,Status,PayType)
-    SELECT TOP (@batchSize)
-        ABS(CHECKSUM(NEWID()))%600+1,
-        CAST(DATEADD(DAY,-(ABS(CHECKSUM(NEWID()))%1095),GETDATE()) AS DATE),
-        CAST(DATEADD(DAY,13,DATEADD(DAY,-(ABS(CHECKSUM(NEWID()))%1095),GETDATE())) AS DATE),
-        CAST(ABS(CHECKSUM(NEWID()))%15000+1500 AS DECIMAL(10,2)),
-        CAST(ABS(CHECKSUM(NEWID()))%3000+200 AS DECIMAL(10,2)),
-        CAST(ABS(CHECKSUM(NEWID()))%1200+50 AS DECIMAL(10,2)),
-        CAST(ABS(CHECKSUM(NEWID()))%900+100 AS DECIMAL(10,2)),
-        CAST(ABS(CHECKSUM(NEWID()))%300+30 AS DECIMAL(10,2)),
-        CAST(ABS(CHECKSUM(NEWID()))%10000+1000 AS DECIMAL(10,2)),
-        CAST(ABS(CHECKSUM(NEWID()))%9000000000+1000000000 AS NVARCHAR(30)),
-        '0'+CAST(ABS(CHECKSUM(NEWID()))%89999999+21000000 AS NVARCHAR)+'0',
-        DATEADD(DAY,-(ABS(CHECKSUM(NEWID()))%1095),GETDATE()),
-        CASE ABS(CHECKSUM(NEWID()))%20 WHEN 0 THEN 'Failed' WHEN 1 THEN 'Reversed' ELSE 'Processed' END,
-        CASE ABS(CHECKSUM(NEWID()))%5 WHEN 0 THEN 'Overtime' WHEN 1 THEN 'Bonus' ELSE 'Regular' END
-    FROM master..spt_values a CROSS JOIN master..spt_values b;
-    SET @batch=@batch+@batchSize;
-    IF @batch%200000=0 RAISERROR('  PayrollTx: %d / %d',0,1,@batch,@total) WITH NOWAIT;
-    IF @batch>=@total BREAK;
-END
-
+USE HR_Sensitive; SET NOCOUNT ON;
 INSERT INTO dbo.VPNSessions (Username,SourceIP,ConnectedAt,DisconnectedAt,Duration,BytesIn,BytesOut,Tunnel,Device,AuthMethod,GatewayIP)
 SELECT TOP 50000
-    LEFT(e.FullName,15)+CAST(e.ID AS NVARCHAR),
-    CAST(CAST(ABS(CHECKSUM(NEWID()))%192+10 AS NVARCHAR)+'.'+CAST(ABS(CHECKSUM(NEWID()))%256 AS NVARCHAR)+'.'+CAST(ABS(CHECKSUM(NEWID()))%256 AS NVARCHAR)+'.'+CAST(ABS(CHECKSUM(NEWID()))%254+1 AS NVARCHAR) AS VARCHAR(45)),
+    N'user'+CAST(ABS(CHECKSUM(NEWID()))%600+1 AS NVARCHAR(6)),
+    CAST(CAST(ABS(CHECKSUM(NEWID()))%192+10 AS NVARCHAR(3))+N'.'+CAST(ABS(CHECKSUM(NEWID()))%256 AS NVARCHAR(3))+N'.'+CAST(ABS(CHECKSUM(NEWID()))%256 AS NVARCHAR(3))+N'.'+CAST(ABS(CHECKSUM(NEWID()))%254+1 AS NVARCHAR(3)) AS VARCHAR(45)),
     DATEADD(MINUTE,-(ABS(CHECKSUM(NEWID()))%525600),GETDATE()),
     DATEADD(MINUTE,ABS(CHECKSUM(NEWID()))%480,DATEADD(MINUTE,-(ABS(CHECKSUM(NEWID()))%525600),GETDATE())),
     ABS(CHECKSUM(NEWID()))%28800+120,
     ABS(CHECKSUM(NEWID()))%524288000+1048576,
     ABS(CHECKSUM(NEWID()))%104857600+524288,
-    CASE ABS(CHECKSUM(NEWID()))%4 WHEN 0 THEN 'SSL-VPN' WHEN 1 THEN 'IPSec-IKEv2' WHEN 2 THEN 'IPSec-IKEv1' ELSE 'WireGuard' END,
-    CASE ABS(CHECKSUM(NEWID()))%3 WHEN 0 THEN 'CONTOSO-LAPTOP-'+CAST(ABS(CHECKSUM(NEWID()))%500 AS NVARCHAR) WHEN 1 THEN 'BYOD-MOBILE' ELSE 'CONTOSO-DESKTOP-'+CAST(ABS(CHECKSUM(NEWID()))%200 AS NVARCHAR) END,
-    CASE ABS(CHECKSUM(NEWID()))%3 WHEN 0 THEN 'Certificate' WHEN 1 THEN 'MFA-TOTP' ELSE 'Password' END,
-    '10.0.'+CAST(ABS(CHECKSUM(NEWID()))%4 AS NVARCHAR)+'.1'
-FROM dbo.Employees e CROSS JOIN master..spt_values v WHERE v.number < 100;
+    CASE ABS(CHECKSUM(NEWID()))%4 WHEN 0 THEN N'SSL-VPN' WHEN 1 THEN N'IPSec-IKEv2' WHEN 2 THEN N'IPSec-IKEv1' ELSE N'WireGuard' END,
+    CASE ABS(CHECKSUM(NEWID()))%3 WHEN 0 THEN N'CONTOSO-LAPTOP-'+CAST(ABS(CHECKSUM(NEWID()))%500 AS NVARCHAR(6)) WHEN 1 THEN N'BYOD-MOBILE' ELSE N'CONTOSO-DESKTOP-'+CAST(ABS(CHECKSUM(NEWID()))%200 AS NVARCHAR(6)) END,
+    CASE ABS(CHECKSUM(NEWID()))%3 WHEN 0 THEN N'Certificate' WHEN 1 THEN N'MFA-TOTP' ELSE N'Password' END,
+    N'10.0.'+CAST(ABS(CHECKSUM(NEWID()))%4 AS NVARCHAR(2))+N'.1'
+FROM sys.all_objects a CROSS JOIN sys.all_objects b;
 "@
 
+# dummy section to be replaced:
 Write-Host "[9/9] Done." -ForegroundColor Cyan
 Write-Host ""
 
