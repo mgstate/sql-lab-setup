@@ -363,7 +363,7 @@ Write-Host "[5/9] EmailArchive (150k rows, ~3 GB) ..." -ForegroundColor Cyan
 # Body = ~10k chars NVARCHAR = ~20KB/row → 150k x 20KB = ~3 GB
 $emailSql = @"
 USE HR_Sensitive; SET NOCOUNT ON;
-DECLARE @b NVARCHAR(MAX) = REPLICATE(CAST(N'Internal confidential communication. This message and any attachments are intended solely for authorized recipients and may contain privileged, proprietary, or sensitive business information including compensation data, personnel records, legal matters, and strategic planning documents. Unauthorized review, disclosure, copying, distribution, or use is strictly prohibited. If received in error please notify the sender immediately and destroy all copies. Records retention: 7 years per policy RM-2019-003. ' AS NVARCHAR(MAX)), 55);
+DECLARE @b NVARCHAR(MAX) = REPLICATE(CAST(N'Internal confidential communication. This message and any attachments are intended solely for authorized recipients and may contain privileged, proprietary, or sensitive business information including compensation data, personnel records, legal matters, and strategic planning documents. Unauthorized review, disclosure, copying, distribution, or use is strictly prohibited. If received in error please notify the sender immediately and destroy all copies. Records retention: 7 years per policy RM-2019-003. ' AS NVARCHAR(MAX)), 25);
 INSERT INTO dbo.EmailArchive (Sender,Recipients,CC,Subject,Body,SentAt,HasAttachment,AttachmentName,FolderPath,IsRead,Importance,ConversationID)
 SELECT TOP 50000
     N'user'+CAST(ABS(CHECKSUM(NEWID()))%600+1 AS NVARCHAR(6))+N'@contoso.com',
@@ -396,7 +396,7 @@ for ($eb = 1; $eb -le 3; $eb++) {
 Write-Host "[6/9] DocumentRepository (60k rows, ~2 GB) ..." -ForegroundColor Cyan
 Invoke-Sql @"
 USE HR_Sensitive; SET NOCOUNT ON;
-DECLARE @c NVARCHAR(MAX) = REPLICATE(CAST(N'CONFIDENTIAL RESTRICTED DISTRIBUTION. This document contains sensitive business, financial, or personnel information. Unauthorized disclosure, reproduction, or distribution is strictly prohibited and may violate company policy and applicable law. Classification: RESTRICTED. Retention: 7 years per Records Management Policy RM-2019-003. Access is logged and audited. If received in error notify records management immediately and destroy all copies. ' AS NVARCHAR(MAX)), 85);
+DECLARE @c NVARCHAR(MAX) = REPLICATE(CAST(N'CONFIDENTIAL RESTRICTED DISTRIBUTION. This document contains sensitive business, financial, or personnel information. Unauthorized disclosure, reproduction, or distribution is strictly prohibited and may violate company policy and applicable law. Classification: RESTRICTED. Retention: 7 years per Records Management Policy RM-2019-003. Access is logged and audited. If received in error notify records management immediately and destroy all copies. ' AS NVARCHAR(MAX)), 25);
 INSERT INTO dbo.DocumentRepository (FileName,FilePath,Owner,Department,Content,CreatedAt,ModifiedAt,SizeBytes,Sensitivity,Version,Tags,CheckedOutBy)
 SELECT TOP 60000
     CASE ABS(CHECKSUM(NEWID()))%8
@@ -489,7 +489,6 @@ SELECT TOP 50000
 FROM sys.all_objects a CROSS JOIN sys.all_objects b;
 "@
 
-# dummy section to be replaced:
 Write-Host "[9/9] Done." -ForegroundColor Cyan
 Write-Host ""
 
