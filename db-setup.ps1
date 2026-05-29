@@ -492,3 +492,36 @@ $mb = Get-DbSizeMB
 $gb = [Math]::Round($mb / 1024, 2)
 Write-Host ""
 Write-Host ("  Database size: {0} MB  (~{1} GB)" -f $mb, $gb) -ForegroundColor Green
+
+# ─── MSSQL JDBC DRIVER FOR DBEAVER ────────────────────────────────────────────
+Write-Host ""
+Write-Host "[*] Installing MS SQL JDBC driver for DBeaver..." -ForegroundColor Cyan
+$jdbcVersion  = "12.8.1.jre11"
+$jdbcJar      = "mssql-jdbc-${jdbcVersion}.jar"
+$jdbcUrl      = "https://newaifunstuff.blob.core.windows.net/rustdesk-deploy/$jdbcJar"
+$jdbcCacheDir = "$env:APPDATA\DBeaverData\drivers\maven\maven-central\com\microsoft\sqlserver\mssql-jdbc\$jdbcVersion"
+$jdbcDest     = "$jdbcCacheDir\$jdbcJar"
+
+if (Test-Path $jdbcDest) {
+    Write-Host "[+] JDBC driver already cached at $jdbcDest" -ForegroundColor Green
+} else {
+    $jdbcTmp = "$env:TEMP\$jdbcJar"
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Invoke-WebRequest -Uri $jdbcUrl -OutFile $jdbcTmp -UseBasicParsing -EA 0
+    if (Test-Path $jdbcTmp) {
+        New-Item -ItemType Directory -Path $jdbcCacheDir -Force | Out-Null
+        Move-Item $jdbcTmp $jdbcDest -Force
+        Write-Host "[+] JDBC driver installed at $jdbcDest" -ForegroundColor Green
+    } else {
+        Write-Host "[!] JDBC driver download failed — DBeaver will prompt on first connect" -ForegroundColor Yellow
+    }
+}
+
+Write-Host ""
+Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host " DB SETUP COMPLETE" -ForegroundColor Cyan
+Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host "  DBeaver connection:  localhost:1433" -ForegroundColor White
+Write-Host "  Auth:                SQL Server  sa / sa" -ForegroundColor White
+Write-Host "  Database:            HR_Sensitive" -ForegroundColor White
+Write-Host "============================================================" -ForegroundColor Cyan
