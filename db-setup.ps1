@@ -496,19 +496,20 @@ Write-Host ("  Database size: {0} MB  (~{1} GB)" -f $mb, $gb) -ForegroundColor G
 # ─── MSSQL JDBC DRIVER FOR DBEAVER ────────────────────────────────────────────
 Write-Host ""
 Write-Host "[*] Installing MS SQL JDBC drivers for DBeaver..." -ForegroundColor Cyan
-$blobBase = "https://newaifunstuff.blob.core.windows.net/rustdesk-deploy"
+$blobBase  = "https://newaifunstuff.blob.core.windows.net/rustdesk-deploy"
 $cacheBase = "$env:APPDATA\DBeaverData\drivers\maven\maven-central\com\microsoft\sqlserver"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
+# Kill DBeaver so it picks up config changes on next launch
+Get-Process dbeaver -EA 0 | Stop-Process -Force -EA 0
+Start-Sleep 1
+
+$jarPath = "$cacheBase\mssql-jdbc\13.4.0.jre11\mssql-jdbc-13.4.0.jre11.jar"
+$dllPath = "$cacheBase\mssql-jdbc_auth\13.4.0.x64\mssql-jdbc_auth-13.4.0.x64.dll"
+
 $drivers = @(
-    @{
-        Name    = "mssql-jdbc-13.4.0.jre11.jar"
-        SubDir  = "mssql-jdbc\13.4.0.jre11"
-    },
-    @{
-        Name    = "mssql-jdbc_auth-13.4.0.x64.dll"
-        SubDir  = "mssql-jdbc_auth\13.4.0.x64"
-    }
+    @{ Name = "mssql-jdbc-13.4.0.jre11.jar";      SubDir = "mssql-jdbc\13.4.0.jre11" },
+    @{ Name = "mssql-jdbc_auth-13.4.0.x64.dll";    SubDir = "mssql-jdbc_auth\13.4.0.x64" }
 )
 
 foreach ($drv in $drivers) {
@@ -526,6 +527,72 @@ foreach ($drv in $drivers) {
             Write-Host "[!] Failed to download $($drv.Name)" -ForegroundColor Yellow
         }
     }
+}
+
+# Write DBeaver driver-settings.xml so it finds local files without Maven download
+$dbeaverConfigDir = "$env:APPDATA\DBeaverData\workspace6\General\.dbeaver"
+New-Item -ItemType Directory -Path $dbeaverConfigDir -Force | Out-Null
+$driverSettings = "$dbeaverConfigDir\driver-settings.xml"
+
+$jarPathEsc = $jarPath -replace '\\', '/'
+$dllPathEsc = $dllPath -replace '\\', '/'
+
+@"
+<?xml version="1.0" encoding="UTF-8"?>
+<drivers>
+    <provider id="mssql">
+        <driver id="mssql_jdbc_ms_new">
+            <library path="maven:/com.microsoft.sqlserver:mssql-jdbc:RELEASE[13.4.0.jre11]">
+                <file id="com.microsoft.sqlserver:mssql-jdbc" version="13.4.0.jre11" type="jar" path="$jarPathEsc"/>
+            </library>
+            <library path="maven:/com.microsoft.sqlserver:mssql-jdbc_auth:RELEASE[13.4.0.x64]">
+                <file id="com.microsoft.sqlserver:mssql-jdbc_auth" version="13.4.0.x64" type="lib" path="$dllPathEsc"/>
+            </library>
+        </driver>
+    </provider>
+</drivers>
+"@ | Set-Content $driverSettings -Encoding UTF8
+Write-Host "[+] DBeaver driver config written to $driverSettings" -ForegroundColor Green
+
+# Pre-create localhost SQL Server connection
+$dsFile = "$dbeaverConfigDir\data-sources.json"
+if (-not (Test-Path $dsFile)) {
+    @"
+{
+    "folders": {},
+    "connections": {
+        "mssql_jdbc_ms_new-local": {
+            "provider": "mssql",
+            "driver": "mssql_jdbc_ms_new",
+            "name": "HR_Sensitive (localhost)",
+            "save-password": true,
+            "configuration": {
+                "host": "localhost",
+                "port": "1433",
+                "database": "HR_Sensitive",
+                "url": "jdbc:sqlserver://localhost:1433;databaseName=HR_Sensitive;encrypt=false;trustServerCertificate=true",
+                "type": "dev",
+                "auth-model": "native",
+                "handlers": {}
+            }
+        }
+    },
+    "connection-types": {
+        "dev": {
+            "name": "Development",
+            "color": "255,255,255",
+            "description": "",
+            "auto-commit": true,
+            "confirm-execute": false,
+            "confirm-data-change": false,
+            "auto-close-transactions": true
+        }
+    }
+}
+"@ | Set-Content $dsFile -Encoding UTF8
+    Write-Host "[+] Pre-created localhost SQL Server connection in DBeaver" -ForegroundColor Green
+} else {
+    Write-Host "[*] DBeaver data-sources.json already exists — skipping connection setup" -ForegroundColor Yellow
 }
 
 Write-Host ""
